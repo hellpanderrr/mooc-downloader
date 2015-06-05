@@ -36,7 +36,6 @@ try:
 except:
     pass
 
-import argparse
 import getpass
 import json
 import os
@@ -85,28 +84,7 @@ USER_AGENT = DEFAULT_USER_AGENTS["edx"]
 # before any other call for print
 
 
-def print(*objects, **kwargs):
-    """
-    Overload the print function to adapt for the encoding bug in Windows Console.
-    It will try to convert text to the console encoding before print to prevent crashes.
-    """
-    try:
-        stream = kwargs.get('file', None)
-        if stream is None:
-            stream = sys.stdout
-        enc = stream.encoding
-        if enc is None:
-            enc = sys.getdefaultencoding()
-    except AttributeError:
-        return __builtins__.print(*objects, **kwargs)
-    texts = []
-    for object in objects:
-        try:
-            original_text = str(object)
-        except UnicodeEncodeError:
-            original_text = unicode(object)
-        texts.append(original_text.encode(enc, errors='replace').decode(enc))
-    return __builtins__.print(*texts, **kwargs)
+
 
 
 def change_openedx_site(site_name):
@@ -202,74 +180,21 @@ def edx_get_subtitle(url, headers):
         return None
 
 
-def parse_args():
-    """
-    Parse the arguments/options passed to the program on the command line.
-    """
-    parser = argparse.ArgumentParser(prog='edx-dl',
-                                     description='Get videos from the OpenEdX platform',
-                                     epilog='For further use information,'
-                                     'see the file README.md',)
-    # positional
-    parser.add_argument('course_id',
-                        nargs='*',
-                        action='store',
-                        default=None,
-                        help='target course id '
-                        '(e.g., https://courses.edx.org/courses/BerkeleyX/CS191x/2013_Spring/info/)'
-                        )
-
-    # optional
-    parser.add_argument('-u',
-                        '--username',
-                        action='store',
-                        help='your edX username (email)')
-    parser.add_argument('-p',
-                        '--password',
-                        action='store',
-                        help='your edX password')
-    parser.add_argument('-f',
-                        '--format',
-                        dest='format',
-                        action='store',
-                        default=None,
-                        help='format of videos to download')
-    parser.add_argument('-s',
-                        '--with-subtitles',
-                        dest='subtitles',
-                        action='store_true',
-                        default=False,
-                        help='download subtitles with the videos')
-    parser.add_argument('-o',
-                        '--output-dir',
-                        action='store',
-                        dest='output_dir',
-                        help='store the files to the specified directory',
-                        default='Downloaded')
-    parser.add_argument('-x',
-                        '--platform',
-                        action='store',
-                        dest='platform',
-                        help='OpenEdX platform, currently either "edx", "stanford" or "usyd-sit"',
-                        default='edx')
-
-    args = parser.parse_args()
-    return args
 
 
-def main():
-    args = parse_args()
 
+def main(inp):
+    args = {}
+    args['username'] = inp[0]
+    args['password'] = inp[1]
+    args['platform'] = inp[2]
+    print (inp)
     # if no args means we are calling the interactive version
-    is_interactive = len(sys.argv) == 1
-    if is_interactive:
-        args.platform = input('Platform: ')
-        args.username = input('Username: ')
-        args.password = getpass.getpass()
+    
 
-    change_openedx_site(args.platform)
+    change_openedx_site(args['platform'])
 
-    if not args.username or not args.password:
+    if not args['username'] or not args['password']:
         print("You must supply username AND password to log-in")
         sys.exit(2)
 
@@ -284,7 +209,7 @@ def main():
     }
 
     # Login
-    post_data = urlencode({'email': args.username, 'password': args.password,
+    post_data = urlencode({'email': args['username'], 'password': args['password'],
                            'remember': False}).encode('utf-8')
     request = Request(LOGIN_API, post_data, headers)
     response = urlopen(request)
@@ -297,30 +222,30 @@ def main():
     dash = get_page_contents(DASHBOARD, headers)
     soup = BeautifulSoup(dash)
     data = soup.find_all('ul')[1]
+    USERNAME = ''#soup.find(id='dashboard-main').find('span', class_='data').string
     COURSES = soup.find_all('article', 'course')
     courses = []
     for COURSE in COURSES:
         c_name = COURSE.h3.text.strip()
-        c_link = None
-        state = 'Not yet'
-        try:
-            # started courses include the course link in the href attribute
-            c_link = BASE_URL + COURSE.a['href']
-            if c_link.endswith('info') or c_link.endswith('info/'):
-                state = 'Started'
-        except KeyError:
-            pass
+        c_link = BASE_URL + COURSE.a['href']
+        if c_link.endswith('info') or c_link.endswith('info/'):
+            state = 'Started'
+        else:
+            state = 'Not yet'
         courses.append((c_name, c_link, state))
     numOfCourses = len(courses)
 
     # Welcome and Choose Course
 
-    print('You can access %d courses' % numOfCourses)
+    
+    
 
     for idx, course in enumerate(courses, 1):
         print('%d - %s -> %s' % (idx, course[0], course[2]))
-
-    c_number = int(input('Enter Course Number: '))
+    
+    return courses
+def download_course():
+    c_number = int(('Enter Course Number: '))
     while c_number > numOfCourses or courses[c_number - 1][2] != 'Started':
         print('Enter a valid Number for a Started Course ! between 1 and ',
               numOfCourses)
@@ -450,9 +375,3 @@ def get_filename(target_dir, filename_prefix):
             (basename, ext) = os.path.splitext(name)
             return basename
 
-if __name__ == '__main__':
-    try:
-        main()
-    except KeyboardInterrupt:
-        print("\n\nCTRL-C detected, shutting down....")
-        sys.exit(0)
